@@ -1,56 +1,59 @@
-
-
 # Import necessary libraries
-from kokoro import KPipeline
-
+import os
 import soundfile as sf
 import torch
-
-import soundfile as sf
-import os
-from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip
-from PIL import Image
 import tempfile
 import random
 import cv2
 import math
-import os, requests, io, time, re, random
-from moviepy.editor import (
-    VideoFileClip, concatenate_videoclips, AudioFileClip, ImageClip,
-    CompositeVideoClip, TextClip, CompositeAudioClip
-)
-import gradio as gr
+import time
+import re
+import requests
+import io
 import shutil
-import os
-import moviepy.video.fx.all as vfx
-import moviepy.config as mpy_config
-from pydub import AudioSegment
-from pydub.generators import Sine
-
-from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 from bs4 import BeautifulSoup
-import base64
 from urllib.parse import quote
 import pysrt
 from gtts import gTTS
-import gradio as gr  # Import Gradio
+import gradio as gr
 
-# Initialize Kokoro TTS pipeline (using American English)
-pipeline = KPipeline(lang_code='a')  # Use voice 'af_heart' for American English
-# Ensure ImageMagick binary is set
-mpy_config.change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
+# Import Kokoro
+from kokoro import KPipeline
+
+# Import moviepy components
+from moviepy.editor import (
+    VideoFileClip, concatenate_videoclips, AudioFileClip, ImageClip,
+    CompositeVideoClip, TextClip, CompositeAudioClip, concatenate_audioclips
+)
+import moviepy.video.fx.all as vfx
+from PIL import Image, ImageDraw, ImageFont
+from pydub import AudioSegment
+from pydub.generators import Sine
+
+# ---------------- Secret Management ---------------- #
+# Get secrets from environment variables (set in Gradio Space settings)
+PEXELS_API_KEY = os.getenv('PEXELS_API_KEY', '')
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'moonshotai/kimi-k2:free')
+
+# Check if secrets are loaded
+if not PEXELS_API_KEY or not OPENROUTER_API_KEY:
+    print("WARNING: API keys not found in environment variables!")
+    print("Please set PEXELS_API_KEY and OPENROUTER_API_KEY in your Gradio Space secrets.")
 
 # ---------------- Global Configuration ---------------- #
-PEXELS_API_KEY = 'BhJqbcdm9Vi90KqzXKAhnEHGsuFNv4irXuOjWtT761U49lRzo03qBGna'
-OPENROUTER_API_KEY = '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'
-OPENROUTER_MODEL = "moonshotai/kimi-k2:free"
 OUTPUT_VIDEO_FILENAME = "final_video.mp4"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
+# Initialize Kokoro TTS pipeline (using American English)
+try:
+    pipeline = KPipeline(lang_code='a')
+except Exception as e:
+    print(f"Warning: Kokoro initialization failed: {e}")
+    pipeline = None
 
-
-# Additional global variables needed for the Gradio interface
+# Global variables for video generation
 selected_voice = 'af_heart'  # Default voice
 voice_speed = 0.9  # Default voice speed
 font_size = 45  # Default font size
@@ -62,24 +65,17 @@ TARGET_RESOLUTION = None
 CAPTION_COLOR = None
 TEMP_FOLDER = None
 
-
 # ---------------- Helper Functions ---------------- #
-# (Your existing helper functions remain unchanged: generate_script, parse_script,
-# search_pexels_videos, search_pexels_images, search_google_images, download_image,
-# download_video, generate_media, generate_tts, apply_kenburns_effect,
-# resize_to_fill, find_mp3_files, add_background_music, create_clip,
-# fix_imagemagick_policy)
-
-# Define these globally as they were in your original code but will be set per run
-TARGET_RESOLUTION = None
-CAPTION_COLOR = None
-TEMP_FOLDER = None
 
 def generate_script(user_input):
     """Generate documentary script with proper OpenRouter handling."""
+    if not OPENROUTER_API_KEY:
+        print("OpenRouter API key not configured")
+        return None
+        
     headers = {
         'Authorization': f'Bearer {OPENROUTER_API_KEY}',
-        'HTTP-Referer': 'https://your-domain.com',
+        'HTTP-Referer': 'https://huggingface.co',  # Use HuggingFace as referer
         'X-Title': 'AI Documentary Maker'
     }
 
@@ -93,7 +89,7 @@ Structure:
 - The full script should make sense as one connected narration — no randomness.
 - Use natural, formal English. No slang, no fake AI language, and no robotic tone.
 - Do not use humor, sarcasm, or casual language. This is a serious narration.
-- No emotion-sound words like “aww,” “eww,” “whoa,” etc.
+- No emotion-sound words like "aww," "eww," "whoa," etc.
 - Do not use numbers like 1, 2, 3 — write them out as one, two, three.
 - At the end, add a [Subscribe] tag with a formal or respectful reason to follow or subscribe.
 
@@ -125,9 +121,7 @@ Rising temperatures are causing coral bleaching and habitat loss.
 
 Follow to explore more about the changing planet we live on.
 
-
-
-Now here is the Topic/scrip: {user_input}
+Now here is the Topic/script: {user_input}
 """
 
     data = {
@@ -161,12 +155,7 @@ Now here is the Topic/scrip: {user_input}
         return None
 
 def parse_script(script_text):
-    """
-    Parse the generated script into a list of elements.
-    For each section, create two elements:
-      - A 'media' element using the section title as the visual prompt.
-      - A 'tts' element with the narration text, voice info, and computed duration.
-    """
+    """Parse the generated script into a list of elements."""
     sections = {}
     current_title = None
     current_text = ""
@@ -183,7 +172,7 @@ def parse_script(script_text):
                     current_title = line[bracket_start+1:bracket_end]
                     current_text = line[bracket_end+1:].strip()
             elif current_title:
-                current_text += line + " "
+                current_text += " " + line
 
         if current_title:
             sections[current_title] = current_text.strip()
@@ -207,6 +196,10 @@ def parse_script(script_text):
 
 def search_pexels_videos(query, pexels_api_key):
     """Search for a video on Pexels by query and return a random HD video."""
+    if not pexels_api_key:
+        print("Pexels API key not configured")
+        return None
+        
     headers = {'Authorization': pexels_api_key}
     base_url = "https://api.pexels.com/videos/search"
     num_pages = 3
@@ -247,21 +240,11 @@ def search_pexels_videos(query, pexels_api_key):
                     retry_delay *= 2
                 else:
                     print(f"Error fetching videos: {response.status_code} {response.text}")
-                    if attempt < max_retries - 1:
-                        print(f"Retrying in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                    else:
-                        break
+                    break
 
             except requests.exceptions.RequestException as e:
                 print(f"Request exception: {e}")
-                if attempt < max_retries - 1:
-                    print(f"Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                else:
-                    break
+                break
 
     if all_videos:
         random_video = random.choice(all_videos)
@@ -273,6 +256,10 @@ def search_pexels_videos(query, pexels_api_key):
 
 def search_pexels_images(query, pexels_api_key):
     """Search for an image on Pexels by query."""
+    if not pexels_api_key:
+        print("Pexels API key not configured")
+        return None
+        
     headers = {'Authorization': pexels_api_key}
     url = "https://api.pexels.com/v1/search"
     params = {"query": query, "per_page": 5, "orientation": "landscape"}
@@ -301,17 +288,11 @@ def search_pexels_images(query, pexels_api_key):
                 retry_delay *= 2
             else:
                 print(f"Error fetching images: {response.status_code} {response.text}")
-                if attempt < max_retries - 1:
-                    print(f"Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
+                break
 
         except requests.exceptions.RequestException as e:
             print(f"Request exception: {e}")
-            if attempt < max_retries - 1:
-                print(f"Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
-                retry_delay *= 2
+            break
 
     print(f"No Pexels images found for query: {query} after all attempts")
     return None
@@ -344,7 +325,7 @@ def download_image(image_url, filename):
     """Download an image from a URL to a local file with enhanced error handling."""
     try:
         headers = {"User-Agent": USER_AGENT}
-        print(f"Downloading image from: {image_url} to {filename}")
+        print(f"Downloading image from: {image_url}")
         response = requests.get(image_url, headers=headers, stream=True, timeout=15)
         response.raise_for_status()
 
@@ -397,11 +378,7 @@ def download_video(video_url, filename):
         return None
 
 def generate_media(prompt, user_image=None, current_index=0, total_segments=1):
-    """
-    Generate a visual asset by first searching for a video or using a specific search strategy.
-    For news-related queries, use Google Images.
-    Returns a dict: {'path': <file_path>, 'asset_type': 'video' or 'image'}.
-    """
+    """Generate a visual asset by searching for videos or images."""
     safe_prompt = re.sub(r'[^\w\s-]', '', prompt).strip().replace(' ', '_')
 
     if "news" in prompt.lower():
@@ -413,8 +390,6 @@ def generate_media(prompt, user_image=None, current_index=0, total_segments=1):
             if downloaded_image:
                 print(f"News image saved to {downloaded_image}")
                 return {"path": downloaded_image, "asset_type": "image"}
-        else:
-            print(f"Google Images search failed for prompt: {prompt}")
 
     if random.random() < video_clip_probability:
         video_file = os.path.join(TEMP_FOLDER, f"{safe_prompt}_video.mp4")
@@ -424,8 +399,6 @@ def generate_media(prompt, user_image=None, current_index=0, total_segments=1):
             if downloaded_video:
                 print(f"Video asset saved to {downloaded_video}")
                 return {"path": downloaded_video, "asset_type": "video"}
-        else:
-            print(f"Pexels video search failed for prompt: {prompt}")
 
     image_file = os.path.join(TEMP_FOLDER, f"{safe_prompt}.jpg")
     image_url = search_pexels_images(prompt, PEXELS_API_KEY)
@@ -434,9 +407,8 @@ def generate_media(prompt, user_image=None, current_index=0, total_segments=1):
         if downloaded_image:
             print(f"Image asset saved to {downloaded_image}")
             return {"path": downloaded_image, "asset_type": "image"}
-        else:
-            print(f"Pexels image download failed for prompt: {prompt}")
 
+    # Fallback to generic images
     fallback_terms = ["nature", "people", "landscape", "technology", "business"]
     for term in fallback_terms:
         print(f"Trying fallback image search with term: {term}")
@@ -447,10 +419,6 @@ def generate_media(prompt, user_image=None, current_index=0, total_segments=1):
             if downloaded_fallback:
                 print(f"Fallback image saved to {downloaded_fallback}")
                 return {"path": downloaded_fallback, "asset_type": "image"}
-            else:
-                print(f"Fallback image download failed for term: {term}")
-        else:
-            print(f"Fallback image search failed for term: {term}")
 
     print(f"Failed to generate visual asset for prompt: {prompt}")
     return None
@@ -465,9 +433,7 @@ def generate_silent_audio(duration, sample_rate=24000):
     return silent_path
 
 def generate_tts(text, voice):
-    """
-    Generate TTS audio using Kokoro, falling back to gTTS or silent audio if needed.
-    """
+    """Generate TTS audio using Kokoro, falling back to gTTS or silent audio if needed."""
     safe_text = re.sub(r'[^\w\s-]', '', text[:10]).strip().replace(' ', '_')
     file_path = os.path.join(TEMP_FOLDER, f"tts_{safe_text}.wav")
 
@@ -475,31 +441,35 @@ def generate_tts(text, voice):
         print(f"Using cached TTS for text '{text[:10]}...'")
         return file_path
 
-    try:
-        kokoro_voice = selected_voice if voice == 'en' else voice
-        generator = pipeline(text, voice=kokoro_voice, speed=voice_speed, split_pattern=r'\n+')
-        audio_segments = []
-        for i, (gs, ps, audio) in enumerate(generator):
-            audio_segments.append(audio)
-        full_audio = np.concatenate(audio_segments) if len(audio_segments) > 1 else audio_segments[0]
-        sf.write(file_path, full_audio, 24000)
-        print(f"TTS audio saved to {file_path} (Kokoro)")
-        return file_path
-    except Exception as e:
-        print(f"Error with Kokoro TTS: {e}")
+    # Try Kokoro if available
+    if pipeline:
         try:
-            print("Falling back to gTTS...")
-            tts = gTTS(text=text, lang='en')
-            mp3_path = os.path.join(TEMP_FOLDER, f"tts_{safe_text}.mp3")
-            tts.save(mp3_path)
-            audio = AudioSegment.from_mp3(mp3_path)
-            audio.export(file_path, format="wav")
-            os.remove(mp3_path)
-            print(f"Fallback TTS saved to {file_path} (gTTS)")
+            kokoro_voice = selected_voice if voice == 'en' else voice
+            generator = pipeline(text, voice=kokoro_voice, speed=voice_speed, split_pattern=r'\n+')
+            audio_segments = []
+            for i, (gs, ps, audio) in enumerate(generator):
+                audio_segments.append(audio)
+            full_audio = np.concatenate(audio_segments) if len(audio_segments) > 1 else audio_segments[0]
+            sf.write(file_path, full_audio, 24000)
+            print(f"TTS audio saved to {file_path} (Kokoro)")
             return file_path
-        except Exception as fallback_error:
-            print(f"Both TTS methods failed: {fallback_error}")
-            return generate_silent_audio(duration=max(3, len(text.split()) * 0.5))
+        except Exception as e:
+            print(f"Error with Kokoro TTS: {e}")
+
+    # Fallback to gTTS
+    try:
+        print("Falling back to gTTS...")
+        tts = gTTS(text=text, lang='en')
+        mp3_path = os.path.join(TEMP_FOLDER, f"tts_{safe_text}.mp3")
+        tts.save(mp3_path)
+        audio = AudioSegment.from_mp3(mp3_path)
+        audio.export(file_path, format="wav")
+        os.remove(mp3_path)
+        print(f"Fallback TTS saved to {file_path} (gTTS)")
+        return file_path
+    except Exception as fallback_error:
+        print(f"Both TTS methods failed: {fallback_error}")
+        return generate_silent_audio(duration=max(3, len(text.split()) * 0.5))
 
 def apply_kenburns_effect(clip, target_resolution, effect_type=None):
     """Apply a smooth Ken Burns effect with a single movement pattern."""
@@ -593,17 +563,6 @@ def resize_to_fill(clip, target_resolution):
 
     return clip
 
-def find_mp3_files():
-    """Search for any MP3 files in the current directory and subdirectories."""
-    mp3_files = []
-    for root, dirs, files in os.walk('.'):
-        for file in files:
-            if file.endswith('.mp3'):
-                mp3_path = os.path.join(root, file)
-                mp3_files.append(mp3_path)
-                print(f"Found MP3 file: {mp3_path}")
-    return mp3_files[0] if mp3_files else None
-
 def add_background_music(final_video, bg_music_volume=0.10):
     """Add background music to the final video using any MP3 file found."""
     try:
@@ -661,53 +620,7 @@ def create_clip(media_path, asset_type, tts_path, duration=None, effects=None, n
         else:
             return None
 
-        if narration_text and CAPTION_COLOR != "transparent":
-            try:
-                words = narration_text.split()
-                chunks = []
-                current_chunk = []
-                for word in words:
-                    current_chunk.append(word)
-                    if len(current_chunk) >= 5:
-                        chunks.append(' '.join(current_chunk))
-                        current_chunk = []
-                if current_chunk:
-                    chunks.append(' '.join(current_chunk))
-
-                chunk_duration = audio_duration / len(chunks)
-                subtitle_clips = []
-                subtitle_y_position = int(TARGET_RESOLUTION[1] * 0.70)
-
-                for i, chunk_text in enumerate(chunks):
-                    start_time = i * chunk_duration
-                    end_time = (i + 1) * chunk_duration
-                    txt_clip = TextClip(
-                        chunk_text,
-                        fontsize=45,
-                        font='Arial-Bold',
-                        color=CAPTION_COLOR,
-                        bg_color='rgba(0, 0, 0, 0.25)',
-                        method='caption',
-                        align='center',
-                        stroke_width=2,
-                        stroke_color=CAPTION_COLOR,
-                        size=(TARGET_RESOLUTION[0] * 0.8, None)
-                    ).set_start(start_time).set_end(end_time)
-                    txt_clip = txt_clip.set_position(('center', subtitle_y_position))
-                    subtitle_clips.append(txt_clip)
-
-                clip = CompositeVideoClip([clip] + subtitle_clips)
-            except Exception as sub_error:
-                print(f"Subtitle error: {sub_error}")
-                txt_clip = TextClip(
-                    narration_text,
-                    fontsize=font_size,
-                    color=CAPTION_COLOR,
-                    align='center',
-                    size=(TARGET_RESOLUTION[0] * 0.7, None)
-                ).set_position(('center', int(TARGET_RESOLUTION[1] / 3))).set_duration(clip.duration)
-                clip = CompositeVideoClip([clip, txt_clip])
-
+        # Skip subtitles for now since captions are disabled
         clip = clip.set_audio(audio_clip)
         print(f"Clip created: {clip.duration:.1f}s")
         return clip
@@ -715,61 +628,14 @@ def create_clip(media_path, asset_type, tts_path, duration=None, effects=None, n
         print(f"Error in create_clip: {str(e)}")
         return None
 
-def fix_imagemagick_policy():
-    """Fix ImageMagick security policies."""
-    try:
-        print("Attempting to fix ImageMagick security policies...")
-        policy_paths = [
-            "/etc/ImageMagick-6/policy.xml",
-            "/etc/ImageMagick-7/policy.xml",
-            "/etc/ImageMagick/policy.xml",
-            "/usr/local/etc/ImageMagick-7/policy.xml"
-        ]
-        found_policy = next((path for path in policy_paths if os.path.exists(path)), None)
-        if not found_policy:
-            print("No policy.xml found. Using alternative subtitle method.")
-            return False
-        print(f"Modifying policy file at {found_policy}")
-        os.system(f"sudo cp {found_policy} {found_policy}.bak")
-        os.system(f"sudo sed -i 's/rights=\"none\"/rights=\"read|write\"/g' {found_policy}")
-        os.system(f"sudo sed -i 's/<policy domain=\"path\" pattern=\"@\*\"[^>]*>/<policy domain=\"path\" pattern=\"@*\" rights=\"read|write\"/g' {found_policy}")
-        os.system(f"sudo sed -i 's/<policy domain=\"coder\" rights=\"none\" pattern=\"PDF\"[^>]*>/<!-- <policy domain=\"coder\" rights=\"none\" pattern=\"PDF\"> -->/g' {found_policy}")
-        print("ImageMagick policies updated successfully.")
-        return True
-    except Exception as e:
-        print(f"Error fixing policies: {e}")
-        return False
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ---------------- Main Video Generation Function ---------------- #
 def generate_video(user_input, resolution, caption_option):
     """Generate a video based on user input via Gradio."""
     global TARGET_RESOLUTION, CAPTION_COLOR, TEMP_FOLDER
+    
+    # Check if API keys are configured
+    if not PEXELS_API_KEY or not OPENROUTER_API_KEY:
+        return None
     
     # Set resolution
     if resolution == "Full":
@@ -784,11 +650,6 @@ def generate_video(user_input, resolution, caption_option):
 
     # Create a unique temporary folder
     TEMP_FOLDER = tempfile.mkdtemp()
-
-    # Fix ImageMagick policy
-    fix_success = fix_imagemagick_policy()
-    if not fix_success:
-        print("Will use alternative methods if needed")
 
     print("Generating script from API...")
     script = generate_script(user_input)
@@ -894,6 +755,10 @@ VOICE_CHOICES = {
 def generate_video_with_options(user_input, resolution, caption_option, music_file, voice, vclip_prob, bg_vol, video_fps, video_preset, v_speed, caption_size):
     global selected_voice, voice_speed, font_size, video_clip_probability, bg_music_volume, fps, preset
     
+    # Check if API keys are configured
+    if not PEXELS_API_KEY or not OPENROUTER_API_KEY:
+        return gr.Error("API keys not configured. Please set PEXELS_API_KEY and OPENROUTER_API_KEY in Space secrets.")
+    
     # Update global variables with user selections
     selected_voice = VOICE_CHOICES[voice]
     voice_speed = v_speed
@@ -916,7 +781,7 @@ def generate_video_with_options(user_input, resolution, caption_option, music_fi
 iface = gr.Interface(
     fn=generate_video_with_options,
     inputs=[
-        gr.Textbox(label="Video Concept", placeholder="Enter your video concept here..."),
+        gr.Textbox(label="Video Concept", placeholder="Enter your video concept here...", lines=3),
         gr.Radio(["Full", "Short"], label="Resolution", value="Full"),
         gr.Radio(["No"], label="Captions (Coming Soon)", value="No"),
         gr.File(label="Upload Background Music (MP3)", file_types=[".mp3"]),
@@ -931,9 +796,9 @@ iface = gr.Interface(
     ],
     outputs=gr.Video(label="Generated Video"),
     title="AI Documentary Video Generator",
-    description="Create short documentary videos with AI. Upload music, choose voice, and customize settings."
+    description="Create short documentary videos with AI. Upload music, choose voice, and customize settings.\n\n⚠️ **Important**: Make sure to set your API keys in the Space secrets!"
 )
 
 # Launch the interface
 if __name__ == "__main__":
-    iface.launch(share=True)
+    iface.launch()
