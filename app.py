@@ -35,7 +35,7 @@ from pydub.generators import Sine
 # Get secrets from environment variables (set in Gradio Space settings)
 PEXELS_API_KEY = os.getenv('PEXELS_API_KEY', '')
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
-OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'moonshotai/kimi-k2:free')
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'openai/gpt-oss-120b:free')
 
 # Check if secrets are loaded
 if not PEXELS_API_KEY or not OPENROUTER_API_KEY:
