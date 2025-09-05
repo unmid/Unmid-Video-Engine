@@ -1,0 +1,12 @@
+gradio
+transformers==4.49.0
+moviepy==1.0.3
+gTTS
+requests
+pydub
+pillow
+kokoro>=0.3.4
+soundfile
+pysrt
+opencv-python-headless
+beautifulsoup4
