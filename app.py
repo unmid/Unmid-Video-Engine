@@ -1,22 +1,37 @@
-# Import necessary libraries
-import os
+from kokoro import KPipeline
+
 import soundfile as sf
 import torch
+
+import soundfile as sf
+import os
+from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip
+from PIL import Image
 import tempfile
 import random
 import cv2
 import math
-import time
-import re
-import requests
-import io
+import os, requests, io, time, re, random
+from moviepy.editor import (
+VideoFileClip, concatenate_videoclips, AudioFileClip, ImageClip,
+CompositeVideoClip, TextClip, CompositeAudioClip
+)
+import gradio as gr
 import shutil
+import os
+import moviepy.video.fx.all as vfx
+import moviepy.config as mpy_config
+from pydub import AudioSegment
+from pydub.generators import Sine
+
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 from bs4 import BeautifulSoup
+import base64
 from urllib.parse import quote
 import pysrt
 from gtts import gTTS
-import gradio as gr
+import gradio as gr # Import Gradio
 
 # Import Kokoro
 from kokoro import KPipeline
