@@ -50,17 +50,17 @@ if not PEXELS_API_KEY:
 if not OPENROUTER_API_KEY:
     OPENROUTER_API_KEY = 'YOUR_OPENROUTER_KEY_HERE'  # Replace with your key for local testing
 
-OPENROUTER_MODEL = "moonshotai/kimi-k2:free"
+OPENROUTER_MODEL = "x-ai/grok-4-fast:free"
 OUTPUT_VIDEO_FILENAME = "final_video.mp4"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 # Global variables for Gradio interface
-selected_voice = 'af_heart'  # Default voice
-voice_speed = 1.2  # Default voice speed (changed from 0.9 to 1.2 to match slider default)
+selected_voice = 'am_michael'  # Default voice
+voice_speed = 1  # Default voice speed (changed from 0.9 to 1.2 to match slider default)
 font_size = 45  # Default font size
-video_clip_probability = 0.25  # Default probability for video clips
+video_clip_probability = 0.65  # Default probability for video clips
 bg_music_volume = 0.08  # Default background music volume
-fps = 30  # Default FPS
+fps = 24  # Default FPS
 preset = "veryfast"  # Default preset
 TARGET_RESOLUTION = None
 CAPTION_COLOR = None
@@ -116,47 +116,40 @@ def generate_script(user_input):
         'X-Title': 'AI Documentary Maker'
     }
 
-    prompt = f"""You're a professional documentary narrator. Your job is to write a serious, natural, and informative video script based on one topic.
+    prompt = f"""You're a comedic documentary narrator. Your job is to write a funny, witty, and unpredictable video script based on one topic.
 
-The script should sound like a real human voiceover from a TV show or documentary — clear, factual, and engaging, like something you'd hear on National Geographic or a news report.
+The script should sound like a real voiceover parody — playful, sarcastic, and filled with surprising jokes, while still slipping in actual information when needed. Think of it as National Geographic meets stand-up comedy.
 
 Structure:
-- Break the script into scenes using [Tags]. Each tag is a short title (1–2 words) that describes the visual or idea.
-- Under each tag, write one sentence (max 12 words) that fits the tag and continues the topic.
-- The full script should make sense as one connected narration — no randomness.
-- Use natural, formal English. No slang, no fake AI language, and no robotic tone.
-- Do not use humor, sarcasm, or casual language. This is a serious narration.
-- No emotion-sound words like "aww," "eww," "whoa," etc.
-- Do not use numbers like 1, 2, 3 — write them out as one, two, three.
-- At the end, add a [Subscribe] tag with a formal or respectful reason to follow or subscribe.
 
-Only output the script. No extra comments or text.
+Break the script into scenes using [Tags]. Each tag is a short title (1–2 words) that sets up the joke or idea.
+
+Under each tag, write one short sentence (max 12 words) that fits the tag and continues the story.
+
+The full script should connect loosely but be intentionally unpredictable and silly.
+
+Use absurd comparisons, unexpected punchlines, and exaggerations.
+
+The humor should never break character: it should always sound like a narrator, not like a random list of jokes.
+
+End with a [Subscribe] tag that gives a ridiculous, over-the-top reason to follow or subscribe.
 
 Example:
 
-[Ocean]
+[Penguins]
+Penguins waddle like overdressed businessmen late for a meeting.
 
-The ocean covers over seventy percent of the Earth's surface.
+[Fish]
+Their diet is mostly fish, which explains the constant fish breath.
 
-[Currents]
+[Predators]
+Leopard seals see penguins as bite-sized appetizers wearing tuxedos.
 
-Ocean currents distribute heat and regulate global climate patterns.
-
-[Coral Reefs]
-
-These ecosystems support over one million species of marine life.
-
-[Pollution]
-
-Plastic waste threatens marine biodiversity and food chains.
-
-[Climate Impact]
-
-Rising temperatures are causing coral bleaching and habitat loss.
+[Humans]
+Tourists watch penguins while holding cameras worth more than a penguin's house.
 
 [Subscribe]
-
-Follow to explore more about the changing planet we live on.
+Subscribe, or a penguin will steal your sandwich in broad daylight.
 
 Now here is the Topic/script: {user_input}
 """
