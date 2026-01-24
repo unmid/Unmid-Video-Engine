@@ -50,7 +50,7 @@ if not PEXELS_API_KEY:
 if not OPENROUTER_API_KEY:
     OPENROUTER_API_KEY = 'YOUR_OPENROUTER_KEY_HERE'  # Replace with your key for local testing
 
-OPENROUTER_MODEL = "x-ai/grok-4-fast:free"
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 OUTPUT_VIDEO_FILENAME = "final_video.mp4"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
