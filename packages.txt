@@ -1,3 +1,4 @@
 imagemagick
 espeak-ng
 python3-opencv
+ffmpeg
